@@ -1,0 +1,14 @@
+# Reportes generados por k6
+results/*.html
+results/*.json
+
+# macOS
+.DS_Store
+
+# Node (si se usan bundlers o linters)
+node_modules/
+package-lock.json
+
+# Notas personales
+INSTRUCTIVO.md
+tests/somke.js.bak

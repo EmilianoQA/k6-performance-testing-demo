@@ -1,0 +1,3 @@
+# Esta carpeta almacena los reportes generados por k6 al correr los tests.
+# Los archivos HTML y JSON que se generan acá están en .gitignore.
+# Solo este archivo existe en el repositorio para mantener la carpeta.

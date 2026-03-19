@@ -1,0 +1,237 @@
+# Workflow de performance testing con k6
+#
+# Se activa de tres formas:
+#   - push a main o develop (corre solo el smoke test, rápido)
+#   - pull request a main (corre smoke + load, valida antes de mergear)
+#   - ejecución manual desde GitHub con opción de elegir qué escenario correr
+
+name: Performance Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      escenario:
+        description: "Escenario a ejecutar"
+        required: true
+        default: "smoke"
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+          - spike
+          - soak
+          - todos
+
+jobs:
+
+  # -----------------------------------------------------------------------
+  # JOB 1: Smoke test
+  # Corre siempre: en push, en PR y en ejecución manual.
+  # Es el más rápido (~10 segundos). Si falla acá, no tiene sentido seguir.
+  # -----------------------------------------------------------------------
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Ejecutar smoke test
+        run: k6 run tests/smoke.js
+
+  # -----------------------------------------------------------------------
+  # JOB 2: Load test
+  # Corre en PR a main y cuando se elige manualmente.
+  # Depende del smoke: si el smoke falla, este no arranca.
+  # -----------------------------------------------------------------------
+  load:
+    name: Load Test
+    runs-on: ubuntu-latest
+    needs: smoke
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.escenario == 'load' || github.event.inputs.escenario == 'todos'))
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Ejecutar load test
+        run: k6 run tests/load.js
+
+      - name: Guardar resultados como artefacto
+        if: always()
+        run: k6 run --out json=results/load-result.json tests/load.js || true
+
+      - name: Subir resultados a GitHub
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: results/
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # JOB 3: Stress test
+  # Solo se corre manualmente. Es pesado y no tiene sentido correrlo en cada PR.
+  # -----------------------------------------------------------------------
+  stress:
+    name: Stress Test
+    runs-on: ubuntu-latest
+    needs: smoke
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.escenario == 'stress' || github.event.inputs.escenario == 'todos')
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Ejecutar stress test
+        run: k6 run tests/stress.js
+
+      - name: Guardar resultados como artefacto
+        if: always()
+        run: k6 run --out json=results/stress-result.json tests/stress.js || true
+
+      - name: Subir resultados a GitHub
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-test-results
+          path: results/
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # JOB 4: Spike test
+  # Solo manual. Ideal para correr antes de un evento de alto tráfico esperado.
+  # -----------------------------------------------------------------------
+  spike:
+    name: Spike Test
+    runs-on: ubuntu-latest
+    needs: smoke
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.escenario == 'spike' || github.event.inputs.escenario == 'todos')
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Ejecutar spike test
+        run: k6 run tests/spike.js
+
+      - name: Guardar resultados como artefacto
+        if: always()
+        run: k6 run --out json=results/spike-result.json tests/spike.js || true
+
+      - name: Subir resultados a GitHub
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spike-test-results
+          path: results/
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # JOB 5: Soak test
+  # Solo manual. Es el más largo (~10 min en demo, horas en producción real).
+  # -----------------------------------------------------------------------
+  soak:
+    name: Soak Test
+    runs-on: ubuntu-latest
+    needs: smoke
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.escenario == 'soak' || github.event.inputs.escenario == 'todos')
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Ejecutar soak test
+        run: k6 run tests/soak.js
+
+      - name: Guardar resultados como artefacto
+        if: always()
+        run: k6 run --out json=results/soak-result.json tests/soak.js || true
+
+      - name: Subir resultados a GitHub
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-test-results
+          path: results/
+          retention-days: 7
